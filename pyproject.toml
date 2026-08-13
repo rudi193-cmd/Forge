@@ -12,6 +12,14 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest"]
+# The optional promotion-trust seam (forge/trust.py): turns §0.2's verified_by
+# from a string into a two-tier mechanism — the author provisionally seals the
+# promotion through willow-gate, a different verifier confers canonical via a
+# custody checkpoint signed by their key. Reuses nestor.cloud_seal wholesale;
+# fail-closes on import when the seam is absent (no gate → the host's local
+# check stands). Both are fleet siblings installed alongside; a bare install
+# fails closed when they are not.
+trust = ["nestor", "willow-gate"]
 
 [tool.setuptools.packages.find]
 include = ["forge*"]
