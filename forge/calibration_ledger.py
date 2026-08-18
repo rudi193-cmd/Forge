@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/calibration_ledger.py — the model's confidence mirror
+"""forge/calibration_ledger.py — the model's confidence mirror
 (docs/design/the-forge-measure.md, the `calibration` class).
 
 The measuring panel refuses a confident wrong ARTIFACT; the checkpoint loop
@@ -14,13 +14,13 @@ claim it makes while building ("this file parses", "this design holds", "this
 dependency exists"), and later ground truth arrives (a test runs, the panel
 measures, a human rules). Grade the model's stated confidence against what
 actually happened: `brier`, `log_score`, and the reliability table (`bins`) —
-all from the vendored `stores/calibration.py` (rule 11: the math is
+all from the vendored `forge/calibration.py` (rule 11: the math is
 oakenscrolls', not rebuilt here). The one signal that matters is
 `overconfidence` — mean stated confidence minus actual hit rate; positive means
 the model promises more than it delivers.
 
 Persistence is the same per-builder SOIL file the governance layer already uses
-(`stores/soil_store.py`, D6: a builder's records live in that builder's own file
+(`forge/soil_store.py`, D6: a builder's records live in that builder's own file
 by construction), under this module's own collection. The overconfidence signal
 routes through `checkpoint_governance.route_nudge` (rule 11: reuse the deduped
 outbox bite 3 / #67 and the panel already feed) — it surfaces a `review` item a

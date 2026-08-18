@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_calibration.py — The Forge's calibration engine, bite 2
+"""forge/checkpoint_calibration.py — The Forge's calibration engine, bite 2
 of the learning layer (docs/design/the-forge.md, "Verification-as-learning —
 the willow-mcp reuse map", 2026-08-11; see also that section's "bite ladder").
 
-Bite 1 (`stores/checkpoint.py`) is the interaction that SEALS a decision.
+Bite 1 (`forge/checkpoint.py`) is the interaction that SEALS a decision.
 This module is what turns a pile of seals into *learning*, per the design
 doc's own settlement: **calibration happens by resurfacing a seal later and
 seeing whether the maker still holds it (`#12` lesson-regression), not by a
@@ -32,7 +32,7 @@ not a new semantic-similarity matcher (see "Reuse discipline" below).
     own prior seal), which is `reject_match` + a fresh seal — both bite-1/D12
     primitives, not new ones.
   * **Scheduling ("is it due for review") is now FOLDED IN**, in its own
-    module `stores/checkpoint_schedule.py` (the reuse-map named the scheduler:
+    module `forge/checkpoint_schedule.py` (the reuse-map named the scheduler:
     py-fsrs, MIT — docs/design/the-forge-fsrs.md). `resurface` records a
     review there after every held/regressed outcome, keyed on the decision's
     Nestor `pair_id`, and reports the next `due` date on
@@ -113,7 +113,7 @@ decision-type-wide "has this builder ever sealed ANYTHING here" refusal,
 matching bite 1's own use of it) before the surface-specific `check()`.
 
 **Loaded modules, and why only one copy of each.** This module loads its own
-copy of `stores/checkpoint.py` (for `Decision`/`Option`/`ChoiceResult`/
+copy of `forge/checkpoint.py` (for `Decision`/`Option`/`ChoiceResult`/
 `Responder`/`CheckpointError`/`_full_socratic`/`_deferred_canonical`) the
 same `spec_from_file_location` way `checkpoint.py` itself loads
 `checkpoint_memory.py`. It does NOT separately load `checkpoint_memory.py`
@@ -136,7 +136,7 @@ on whether a maker engaged honestly with a resurfaced decision, only on
 whether they said it still holds.
 
 Usage (dev CLI, mirroring `checkpoint.py`'s own `demo` shape):
-    python stores/checkpoint_calibration.py resurface <builder_id> \\
+    python -m forge.checkpoint_calibration resurface <builder_id> \\
         <decision_type> --surface "..." [--root DIR] [--regress]
 """
 from __future__ import annotations
@@ -209,7 +209,7 @@ class ResurfaceOutcome:
     engagement→grade wire shows up: a HELD review the maker justified
     substantively grades FSRS Easy (next_due pushed well out), a thinly- or
     un-justified hold grades Good/Hard (sooner); a regression is always Again
-    (soonest). See `stores/checkpoint_schedule.py`'s `grade`.
+    (soonest). See `forge/checkpoint_schedule.py`'s `grade`.
     `engagement`: the [0,1] score of the rationale the maker gave THIS run —
     for a held review, their answer to "it still holds — why?"; for a
     regression, the rationale for the new answer. `None` when there was none to
@@ -435,7 +435,7 @@ def contradictions(
 
 
 # `is_due` used to live here as a fixed-interval placeholder; bite 2's FSRS
-# fold-in moved it (card-driven) to `stores/checkpoint_schedule.py`. Reach for
+# fold-in moved it (card-driven) to `forge/checkpoint_schedule.py`. Reach for
 # `checkpoint_schedule.is_due(card, now)` — a caller with a resurfaced
 # decision's `pair_id` loads its card via `checkpoint_schedule.load_card` and
 # asks from there.

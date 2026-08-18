@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""stores/soil_store.py — a minimal FilesystemSoilStore backing the vendored
+"""forge/soil_store.py — a minimal FilesystemSoilStore backing the vendored
 `human_loop` (docs/design/the-forge-human-loop.md, D-HL-2).
 
-`human_loop` (stores/human_loop.py, vendored from willow-mcp) is written over an
+`human_loop` (forge/human_loop.py, vendored from willow-mcp) is written over an
 INJECTED store with a tiny interface — `put(collection, record, record_id=)`,
 `all(collection)`, `get(collection, id)`. willow-mcp homes it in its SOIL store;
 Nestor's `SqliteStore` can't (verified: it exposes a document/segment/memory

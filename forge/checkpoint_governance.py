@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_governance.py — adopting willow-mcp's `human_loop` under
+"""forge/checkpoint_governance.py — adopting willow-mcp's `human_loop` under
 The Forge's checkpoint (docs/design/the-forge-human-loop.md).
 
 The D12 move applied at the governance layer: `checkpoint_memory` adopted

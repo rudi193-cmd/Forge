@@ -14,7 +14,7 @@
 # `consent.cloud_llm` file; the Forge gates it on the BUILD'S MANIFEST — a
 # cloud-fallback permission that already rides inside the D4 (sap-gate) manifest
 # signature, so the "declared, signed, bound-to-the-maker" property comes from
-# D4, not a separate consent store. That policy lives in `stores/model_route.py`
+# D4, not a separate consent store. That policy lives in `forge/model_route.py`
 # (the D7-A gate), which imports the detector below. Kept diffable against
 # upstream: if willow-mcp's copy of these three functions moves, reconcile.
 """model_egress (detection half) — is the model host on this machine?
@@ -22,7 +22,7 @@
 A model request is LOCAL (the vLLM/Ollama loopback default, no network) or it is
 EGRESS (off the machine), and only egress needs a declared permission. This
 module answers only that question, deterministically and with no policy of its
-own — the policy is `stores/model_route.py`.
+own — the policy is `forge/model_route.py`.
 """
 from __future__ import annotations
 

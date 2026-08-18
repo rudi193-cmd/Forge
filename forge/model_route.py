@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/model_route.py — The Forge's D7-A gate: declared-not-ambient model
+"""forge/model_route.py — The Forge's D7-A gate: declared-not-ambient model
 routing (docs/design/the-forge.md, D7).
 
 D7's rule, made mechanical: a model request runs LOCAL first (the vLLM/loopback
@@ -10,7 +10,7 @@ cloud fallback never gets network.
 
 Two reuses, one policy:
   * **Detection** is willow-mcp's fail-closed loopback check, vendored in
-    `stores/model_egress.py` (`is_local_host`): only an all-loopback host is
+    `forge/model_egress.py` (`is_local_host`): only an all-loopback host is
     LOCAL; an unparseable/unresolvable/mixed host reads as OFF the machine and
     needs a permission.
   * **Authorization** is NOT a separate signed envelope (willow-mcp's
