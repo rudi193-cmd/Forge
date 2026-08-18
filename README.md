@@ -38,10 +38,11 @@ pure math and governance run on the standard library alone:
 
 | Absent | The engine still runs, but… |
 |--------|------------------------------|
-| **Nestor** (the decision seal) | full-Socratic every time — no recognition, no reseal |
+| **Nestor** (the decision seal) | full-Socratic every time — no recognition, no reseal. Present at v0.6.0+: fuzzy `constraints_on` (bar 0.55, calibrated on the dogfood corpus) catches a re-worded prior decision before the Forge's own `recognize_threshold` (0.6) applies — the recognize band matches more reliably with no Forge code change |
 | **fsrs** (spaced resurfacing) | fixed-interval fallback |
 | **kartikeya** (the sandbox) | the `execution` instrument declares an honest coverage gap instead of parsing unsandboxed |
 | **codebase-memory-mcp** | `call-graph` is named uncovered |
+| **production-readiness-checklist** (the readiness corpus) | the measuring panel's coverage claims are unmeasured against its 10,042 controls. Read via the store-side `readiness_corpus.py` seam — injected, never vendored |
 
 ## Quick start
 
