@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/measure_panel.py — The Forge's measuring panel.
+"""forge/measure_panel.py — The Forge's measuring panel.
 
 The box (`rudi193-cmd/quick-stupids` PR #5) taught two things a builder-harness
 has to internalize:
@@ -41,7 +41,7 @@ Store-side (D1): `apps/the-forge/` never imports this — a build does not measu
 itself and mark its own homework.
 
 Usage:
-    python stores/measure_panel.py measure <build_dir>
+    python -m forge.measure_panel measure <build_dir>
 """
 from __future__ import annotations
 
@@ -110,6 +110,7 @@ class PanelReport:
     ran: list[str]
     unavailable: list[tuple[str, str]]  # (instrument name, reason)
     not_covered: list[tuple[str, str]] = field(default_factory=list)  # (class, fleet tool)
+    ran_empty: list[str] = field(default_factory=list)  # instruments that ran but found nothing
 
     def coverage_note(self) -> str:
         """The sigmap lesson as a sentence the panel always emits: what ran,
@@ -125,6 +126,12 @@ class PanelReport:
         if self.not_covered:
             missing = "; ".join(f"{cls} <- {tool}" for cls, tool in self.not_covered)
             note += f" — NOT COVERED AT ALL [{missing}]"
+        if self.ran_empty:
+            # "ran" is not "measured": an instrument that completed without
+            # raising but found nothing measurable (e.g. no parseable files)
+            # must not read as a clean bill of health — it read nothing.
+            empty = ", ".join(self.ran_empty)
+            note += f" — RAN BUT FOUND NOTHING MEASURABLE [{empty}]"
         note += (
             ". This is harness coverage, not a verdict on the artifact: a class "
             "no instrument measured is a class this panel could not see."
@@ -208,6 +215,7 @@ def run_panel(build_dir: Path, instruments: list[Instrument]) -> PanelReport:
     findings: list[Finding] = []
     ran: list[str] = []
     unavailable: list[tuple[str, str]] = []
+    ran_empty: list[str] = []
 
     for inst in instruments:
         try:
@@ -219,6 +227,13 @@ def run_panel(build_dir: Path, instruments: list[Instrument]) -> PanelReport:
             unavailable.append((inst.name, f"errored: {type(e).__name__}: {e}"))
             continue
         ran.append(inst.name)
+        if not got:
+            # "ran" != "measured": an instrument that completed cleanly but
+            # returned zero findings (e.g. no parseable files in this build)
+            # is NOT the same as an instrument that looked and found nothing
+            # wrong — record it separately so a clean report can't be read as
+            # a clean bill of health when nothing was actually measurable.
+            ran_empty.append(inst.name)
         findings.extend(got)
 
     # convergence: group by the CANONICAL artifact key (so differently-spelled
@@ -242,7 +257,7 @@ def run_panel(build_dir: Path, instruments: list[Instrument]) -> PanelReport:
 
     return PanelReport(
         findings=findings, convergent=convergent, ran=ran,
-        unavailable=unavailable, not_covered=not_covered,
+        unavailable=unavailable, not_covered=not_covered, ran_empty=ran_empty,
     )
 
 
@@ -374,6 +389,18 @@ def _cmd_measure(args: argparse.Namespace) -> int:
         from . import instrument_execution as iex
         instruments.append(iex.ExecutionInstrument(require_isolation=not args.no_require_isolation))
     report = run_panel(Path(args.build_dir), instruments)
+
+    routed = 0
+    builder_id = getattr(args, "builder_id", None)
+    if builder_id and report.convergent:
+        # Convergent findings discovered via the CLI must reach the same
+        # human_required queue the library caller gets from route() —
+        # otherwise a convergent alarm found by `measure_panel.py measure`
+        # is printed and then lost. Routing is opt-in on --builder-id since
+        # route() needs a builder identity the bare build-dir doesn't carry.
+        root = Path(args.root) if getattr(args, "root", None) else Path(args.build_dir)
+        routed = route(report, builder_id=builder_id, root=root)
+
     print(json.dumps({
         "convergent": [
             {"artifact": c.artifact, "instruments": list(c.instruments)} for c in report.convergent
@@ -382,7 +409,9 @@ def _cmd_measure(args: argparse.Namespace) -> int:
             {"instrument": f.instrument, "artifact": f.artifact, "metric": f.metric,
              "value": f.value, "severity": f.severity} for f in report.findings
         ],
+        "ran_empty": report.ran_empty,
         "coverage": report.coverage_note(),
+        "routed": routed,
     }, indent=2))
     # exit 1 if the panel found convergence — a CI signal, though it never blocks a build itself
     return 1 if report.convergent else 0
@@ -399,6 +428,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="also run the kartikeya per-file parse instrument (needs a sandbox)")
     m.add_argument("--no-require-isolation", action="store_true",
                    help="with --with-execution: accept a plain parse-only run when no sandbox is available")
+    m.add_argument("--builder-id", default=None,
+                   help="if set, route convergent findings into the human_required queue for this builder "
+                        "(checkpoint_governance.route_nudge). Omit to just print the report without routing.")
+    m.add_argument("--root", default=None,
+                   help="human_required queue root for --builder-id routing (default: build_dir)")
     m.set_defaults(func=_cmd_measure)
     return p
 

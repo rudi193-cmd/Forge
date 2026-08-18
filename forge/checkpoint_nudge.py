@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_nudge.py — The Forge's mid-session nudge (#67), the last
+"""forge/checkpoint_nudge.py — The Forge's mid-session nudge (#67), the last
 willow-mcp reuse for the learning loop (docs/design/the-forge.md).
 
 Bite 3 wired `friction_score` (`#66`, the per-turn sycophancy score) into the
@@ -51,8 +51,8 @@ dependency-free), and `#69`'s devil's-advocate-on-zero-friction (a different
 idea in the pile).
 
 Usage (dev CLI):
-    python stores/checkpoint_nudge.py mirror --transcript turns.json
-    python stores/checkpoint_nudge.py engagement-run --scores 0.1 0.2 0.05
+    python -m forge.checkpoint_nudge mirror --transcript turns.json
+    python -m forge.checkpoint_nudge engagement-run --scores 0.1 0.2 0.05
 """
 from __future__ import annotations
 

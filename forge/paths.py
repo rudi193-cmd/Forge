@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["home", "ensure"]
+__all__ = ["home"]
 
 _ROOT_ENV = "FORGE_HOME"
 _ROOT_NAME = ".forge"
@@ -27,17 +27,3 @@ def home() -> Path:
     if override:
         return Path(override)
     return Path.home() / _ROOT_NAME
-
-
-def ensure(path: Path | str) -> Path:
-    """Create a directory under the root; refuse anything outside it. Resolves
-    before checking (Path.parents is lexical and would admit `home()/..`), and
-    resolve() also follows symlinks — the other half of the same guard."""
-    root = home().resolve()
-    candidate = Path(path)
-    target = candidate if candidate.is_absolute() else root / candidate
-    target = target.resolve()
-    if target != root and root not in target.parents:
-        raise ValueError(f"refusing to create {target} outside {root}")
-    target.mkdir(parents=True, exist_ok=True)
-    return target

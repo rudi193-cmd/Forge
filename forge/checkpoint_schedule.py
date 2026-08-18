@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_schedule.py — The Forge's review scheduler, the FSRS
+"""forge/checkpoint_schedule.py — The Forge's review scheduler, the FSRS
 fold-in that finishes bite 2's deferred "is it due for review" half
 (docs/design/the-forge-fsrs.md, 2026-08-11).
 
-Bite 2 (`stores/checkpoint_calibration.py`) shipped `is_due` as a fixed-
+Bite 2 (`forge/checkpoint_calibration.py`) shipped `is_due` as a fixed-
 interval, stdlib-only PLACEHOLDER, explicitly waiting for the Apache-compat
 reuse-map to name a real scheduler. It named **py-fsrs** (PyPI `fsrs`, MIT,
 sole transitive dep `typing-extensions`) — the same spaced-repetition library
@@ -58,9 +58,9 @@ engagement grade (the `Hard`/`Easy` half of the seam above), and any UI over
 "here are your due decisions."
 
 Usage (dev CLI):
-    python stores/checkpoint_schedule.py review <builder_id> <pair_id> \\
+    python -m forge.checkpoint_schedule review <builder_id> <pair_id> \\
         --outcome held|regressed [--root DIR]
-    python stores/checkpoint_schedule.py due <builder_id> <pair_id> [--root DIR]
+    python -m forge.checkpoint_schedule due <builder_id> <pair_id> [--root DIR]
 """
 from __future__ import annotations
 
@@ -133,7 +133,7 @@ class ScheduleError(Exception):
 # failure (mirrors the soft-Nestor degraded test).
 
 _FSRS_MISSING_MSG = (
-    "stores/checkpoint_schedule.py's real scheduler needs `fsrs` (PyPI, MIT), "
+    "forge/checkpoint_schedule.py's real scheduler needs `fsrs` (PyPI, MIT), "
     "which is a soft/optional dependency (docs/design/the-forge-fsrs.md, "
     "D-FSRS-4). Install it with `pip install fsrs` for real spaced-repetition "
     "scheduling; without it, this module degrades to a fixed-interval fallback."

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/instrument_execution.py — the panel's execution instrument
+"""forge/instrument_execution.py — the panel's execution instrument
 (docs/design/the-forge-measure.md): kartikeya per-file parse/lint.
 
 The box's load-bearing tool was kartikeya, because it EXECUTED the suspect code

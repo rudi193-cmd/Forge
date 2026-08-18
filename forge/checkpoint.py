@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/checkpoint.py — The Forge's D8 checkpoint interaction, bite 1 of
+"""forge/checkpoint.py — The Forge's D8 checkpoint interaction, bite 1 of
 the learning layer (docs/design/the-forge.md, "Verification-as-learning —
 the willow-mcp reuse map", 2026-08-11).
 
@@ -7,7 +7,7 @@ D8 names the mode: every design/implementation decision the model is about
 to make on the builder's behalf stops and poses the decision as a question
 with real options and tradeoffs, before writing anything — the builder
 answers, and the code that gets written matches their answer. D9/D12 give
-that interaction a memory: `stores/checkpoint_memory.py` (already built,
+that interaction a memory: `forge/checkpoint_memory.py` (already built,
 this module's only real dependency) answers "has this builder sealed this
 decision-type before" via a per-builder Nestor `EntityResolver`. **This
 module is the interaction on top of that memory** — the three-band router
@@ -108,7 +108,7 @@ standing in for D7's not-yet-existent model, exactly as bite 0's
 `stub_builder` stood in for the same thing).
 
 Usage (dev CLI, mirroring `forge_build.py`'s shape):
-    python stores/checkpoint.py demo <builder_id> <decision_type> \\
+    python -m forge.checkpoint demo <builder_id> <decision_type> \\
         [--root DIR] [--recognize-threshold 0.6]
 """
 from __future__ import annotations
@@ -662,7 +662,7 @@ class _ScriptedResponder:
     every prompt it's asked and always picks the FIRST option with a fixed
     rationale, never defers. Not used by the test suite (which scripts its
     own responders per-scenario); this exists only so `python
-    stores/checkpoint.py demo ...` has something to run without a real
+    -m forge.checkpoint demo ...` has something to run without a real
     maker UI."""
 
     def confirm(self, prompt: str) -> bool:

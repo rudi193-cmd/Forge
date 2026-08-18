@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_memory.py — per-builder checkpoint memory (D9/D12,
+"""forge/checkpoint_memory.py — per-builder checkpoint memory (D9/D12,
 docs/design/the-forge.md).
 
 D9 names the mechanic: D8's Socratic checkpoint ("confirm a design decision,
@@ -104,7 +104,7 @@ learning" section, bite 1 of the D8/D9/D12 build order.** Mirroring
 used to be imported at module scope, so merely `import checkpoint_memory`
 crashed in any environment without Nestor installed — including a caller
 that only wants `nestor_available()` to decide whether to even attempt
-memory-backed routing at all (`stores/checkpoint.py`'s D8 orchestrator does
+memory-backed routing at all (`forge/checkpoint.py`'s D8 orchestrator does
 exactly this). `_nestor()` (below) now imports Nestor lazily, on first real
 use, and caches it; `nestor_available()` tries that same import and reports
 True/False without ever raising. None of the OPERATIONS this module
@@ -148,12 +148,12 @@ Not in scope, deliberately — the boundary this module stops at:
     hardening, not part of this module's job.
 
 Usage (dev CLI, mirroring principal.py / session.py's shape):
-    python stores/checkpoint_memory.py has-sealed <builder_id> <decision_type>
-    python stores/checkpoint_memory.py seal <builder_id> <decision_type> \\
+    python -m forge.checkpoint_memory has-sealed <builder_id> <decision_type>
+    python -m forge.checkpoint_memory seal <builder_id> <decision_type> \\
         --surface "..." --canonical "..."
-    python stores/checkpoint_memory.py reject-match <builder_id> <decision_type> \\
+    python -m forge.checkpoint_memory reject-match <builder_id> <decision_type> \\
         --surface "..." --pair-id <id> --reason "..."
-    python stores/checkpoint_memory.py reject-pair <builder_id> <decision_type> \\
+    python -m forge.checkpoint_memory reject-pair <builder_id> <decision_type> \\
         --pair-id <id> --reason "..."
 """
 from __future__ import annotations
@@ -306,7 +306,7 @@ def nestor_available() -> bool:
     """True if Nestor can be imported right now, False otherwise — never
     raises, in either direction. This is the soft-Nestor GATE a caller
     checks BEFORE doing anything else with this module — D8's checkpoint
-    orchestrator (`stores/checkpoint.py`) calls this first and skips memory
+    orchestrator (`forge/checkpoint.py`) calls this first and skips memory
     entirely (straight to full Socratic) when it's False, rather than let
     `open_checkpoint_memory` raise partway through a flow. Deliberately
     routes through the same `_nestor()` cache/import path the real

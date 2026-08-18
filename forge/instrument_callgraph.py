@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/instrument_callgraph.py — the measuring panel's first REAL fleet
+"""forge/instrument_callgraph.py — the measuring panel's first REAL fleet
 instrument: `codebase-memory-mcp`'s call graph (docs/design/the-forge-measure.md).
 
 The box's decoy — `login.php`'s `check_login()`, retrieved by every ranker as

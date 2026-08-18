@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stores/checkpoint_engagement.py — The Forge's engagement gate, bite 3 of
+"""forge/checkpoint_engagement.py — The Forge's engagement gate, bite 3 of
 the learning layer (docs/design/the-forge.md, "Verification-as-learning").
 
 D8's checkpoint (bite 1) makes a maker *decide* instead of letting the model
@@ -10,7 +10,7 @@ already shipped there as the sycophancy scorer this module REUSES rather than
 rebuilds (rule 11).
 
 **What it reuses, and why it is a reuse not a rebuild.** The scorer is
-`stores/friction_floor.py`, vendored byte-for-byte from willow-mcp (itself a
+`forge/friction_floor.py`, vendored byte-for-byte from willow-mcp (itself a
 vendor of willow-gate, all three Apache-2.0 — see that file's header). Its
 `friction_score(text, context)` measures how much a turn is *other* — pushes
 back, grounds itself against something outside the prompt, adds unechoed
@@ -70,7 +70,7 @@ increment on top of this signal; this bite ships the signal, honestly, and
 stops there rather than half-shipping the timing.
 
 Usage (dev CLI):
-    python stores/checkpoint_engagement.py score --rationale "..." --surface "..."
+    python -m forge.checkpoint_engagement score --rationale "..." --surface "..."
 """
 from __future__ import annotations
 

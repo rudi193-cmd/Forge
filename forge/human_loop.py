@@ -4,7 +4,7 @@
 # Vendored, not imported, for the same reason friction_floor.py is: this module
 # is pure, stdlib-only (uuid/datetime), over an INJECTED store, and willow-mcp
 # is not cleanly pip-installable. The store it expects is supplied by
-# stores/soil_store.py (a FilesystemSoilStore with the put/all/get interface the
+# forge/soil_store.py (a FilesystemSoilStore with the put/all/get interface the
 # functions below call). Adopted under checkpoint per
 # docs/design/the-forge-human-loop.md (D-HL-1): the seal is memory, this is the
 # non-forgeable governance record. Kept diffable against upstream on purpose —
@@ -216,7 +216,7 @@ def resolve(store, item_id: str, *, resolved_by: str, status: str = "resolved", 
         raise HumanLoopError(f"invalid status {st!r}; expected one of {QUEUE_RESOLUTIONS}")
     existing = store.get(QUEUE_COLLECTION, item_id)
     if not existing:
-        return {"error": "unknown_item", "item_id": item_id}
+        raise HumanLoopError(f"unknown item {item_id!r}")
     item = _clean(existing)
     item.update(status=st, resolved_by=resolved_by, resolved_at=_now(), note=note or "")
     store.put(QUEUE_COLLECTION, item, record_id=item_id)
