@@ -75,10 +75,8 @@ Usage (dev CLI):
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import sys
-from pathlib import Path
 
 
 # The vendored, pure-stdlib scorer — loaded spec-style like every other

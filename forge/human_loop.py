@@ -233,13 +233,3 @@ def list_queue(store, *, status: str = QUEUE_OPEN, kind: str = "", limit: int = 
         rows = [r for r in rows if r.get("kind") == kind.strip().lower()]
     rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return rows[:max(0, limit)]
-
-
-def queue_stats(store) -> dict[str, int]:
-    """Counts by status across the whole queue (unfiltered)."""
-    stats: dict[str, int] = {}
-    for r in store.all(QUEUE_COLLECTION):
-        if isinstance(r, dict) and "id" in r:
-            s = r.get("status", "open")
-            stats[s] = stats.get(s, 0) + 1
-    return stats

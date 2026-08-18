@@ -13,11 +13,12 @@ editable from the sibling checkout first:
     pip install -e /workspace/nestor
 
 (verify that path in your own environment before assuming it — `ls
-/workspace/nestor` — it is not guaranteed to be there or at that path). If
-Nestor is not importable, `stores/checkpoint_memory.py`'s own top-level
-import raises a `ImportError` with this same instruction, and every test
-below fails at collection with that message rather than a bare
-`ModuleNotFoundError` — see that module's "import Nestor" section.
+/workspace/nestor` — it is not guaranteed to be there or at that path). Nestor
+is a SOFT dependency of the Forge (`checkpoint_memory.py`'s own "import
+Nestor" section), so this file does not require it at collection time: tests
+that go through the real Nestor library (via this file's own `_open` helper)
+are marked `@_needs_nestor` and skip cleanly when it isn't installed, rather
+than hard-failing.
 
 One more honest note: Nestor's seal-signature machinery (`NESTOR_SEAL_KEY`)
 is intentionally left unconfigured here, exactly as `stores/checkpoint_memory.py`'s
@@ -46,6 +47,14 @@ principal = checkpoint_memory.principal  # the same principal.py checkpoint_memo
 pytestmark = pytest.mark.filterwarnings(
     "ignore:NESTOR_SEAL_KEY not set.*:RuntimeWarning"
 )
+
+# Nestor is a SOFT dependency of the Forge (see checkpoint_memory.py's own
+# module docstring) — this file's tests that go through `_open` (below) hit
+# the REAL Nestor library and must be skipped, not hard-failed, when it
+# isn't installed. Mirrors the `_needs_fsrs` pattern in
+# tests/test_checkpoint_calibration.py / tests/test_checkpoint_schedule.py.
+_HAS_NESTOR = checkpoint_memory.nestor_available()
+_needs_nestor = pytest.mark.skipif(not _HAS_NESTOR, reason="nestor not installed in this environment")
 
 BUILDER_A = "a" * 32  # path-safe under principal.py's _check_builder_id
 BUILDER_B = "b" * 32
@@ -80,6 +89,7 @@ def test_two_builders_get_different_db_files(tmp_path):
     assert path_b.name == f"{BUILDER_B}.db"
 
 
+@_needs_nestor
 def test_a_decision_sealed_by_one_builder_is_invisible_to_another_even_for_the_identical_decision_type(
     tmp_path,
 ):
@@ -115,6 +125,7 @@ def test_a_decision_sealed_by_one_builder_is_invisible_to_another_even_for_the_i
         raw_b.close()
 
 
+@_needs_nestor
 def test_reopening_the_same_builder_sees_its_own_prior_seal(tmp_path):
     """Not a leak test, the sibling check: closing and reopening the SAME
     builder's memory (a realistic caller pattern — one process per request)
@@ -129,6 +140,7 @@ def test_reopening_the_same_builder_sees_its_own_prior_seal(tmp_path):
 
 # ── has_sealed reflects a seal ──────────────────────────────────────────────
 
+@_needs_nestor
 def test_has_sealed_is_false_before_and_true_after_a_seal(tmp_path):
     with _open(tmp_path) as cm:
         assert cm.has_sealed() is False
@@ -138,6 +150,7 @@ def test_has_sealed_is_false_before_and_true_after_a_seal(tmp_path):
         assert cm.has_sealed() is True
 
 
+@_needs_nestor
 def test_has_sealed_is_scoped_to_its_own_decision_type_not_global(tmp_path):
     """Sealing under one decision_type must not make a DIFFERENT
     decision_type (same builder) report sealed — the other half of D9's
@@ -154,6 +167,7 @@ def test_has_sealed_is_scoped_to_its_own_decision_type_not_global(tmp_path):
 
 # ── reject_match: this application wrong, pattern still holds ──────────────
 
+@_needs_nestor
 def test_reject_match_suppresses_only_the_rejected_query_not_the_sealed_pair(tmp_path):
     with _open(tmp_path) as cm:
         sealed = cm.seal(DECISION_TEXT, CHOSEN_OPTION)
@@ -188,6 +202,7 @@ def test_reject_match_suppresses_only_the_rejected_query_not_the_sealed_pair(tmp
         assert cm.has_sealed() is True
 
 
+@_needs_nestor
 def test_reject_match_requires_pair_id_or_target_text(tmp_path):
     with _open(tmp_path) as cm:
         cm.seal(DECISION_TEXT, CHOSEN_OPTION)
@@ -197,6 +212,7 @@ def test_reject_match_requires_pair_id_or_target_text(tmp_path):
 
 # ── reject_pair: the pattern itself was wrong, unseal everywhere ───────────
 
+@_needs_nestor
 def test_reject_pair_retracts_the_seal_so_has_sealed_reflects_it(tmp_path):
     with _open(tmp_path) as cm:
         sealed = cm.seal(DECISION_TEXT, CHOSEN_OPTION)
@@ -210,6 +226,7 @@ def test_reject_pair_retracts_the_seal_so_has_sealed_reflects_it(tmp_path):
         assert result["canonical"] is None
 
 
+@_needs_nestor
 def test_reject_pair_is_a_stronger_retraction_than_reject_match(tmp_path):
     """reject_match on the ORIGINAL wording leaves the pair's own status
     untouched for other queries; reject_pair retires it everywhere. Same
@@ -321,6 +338,7 @@ def test_checkpoint_db_path_never_produces_a_path_outside_root(tmp_path):
 
 # ── close/cleanup semantics ─────────────────────────────────────────────────
 
+@_needs_nestor
 def test_using_a_closed_checkpoint_memory_raises_the_module_own_exception_type(tmp_path):
     cm = _open(tmp_path)
     cm.seal(DECISION_TEXT, CHOSEN_OPTION)
@@ -332,6 +350,7 @@ def test_using_a_closed_checkpoint_memory_raises_the_module_own_exception_type(t
         cm.has_sealed()
 
 
+@_needs_nestor
 def test_context_manager_closes_on_exit_even_after_an_exception(tmp_path):
     with pytest.raises(RuntimeError, match="boom"):
         with _open(tmp_path) as cm:
@@ -341,6 +360,7 @@ def test_context_manager_closes_on_exit_even_after_an_exception(tmp_path):
         cm.has_sealed()
 
 
+@_needs_nestor
 def test_close_is_idempotent(tmp_path):
     cm = _open(tmp_path)
     cm.close()
@@ -349,6 +369,7 @@ def test_close_is_idempotent(tmp_path):
 
 # ── conflict / rejection Nestor exceptions surface as this module's own ────
 
+@_needs_nestor
 def test_conflicting_seal_by_a_different_verifier_raises_checkpoint_conflict(tmp_path):
     with _open(tmp_path) as cm:
         cm.seal(DECISION_TEXT, CHOSEN_OPTION, verifier=BUILDER_A)
@@ -356,6 +377,7 @@ def test_conflicting_seal_by_a_different_verifier_raises_checkpoint_conflict(tmp
             cm.seal(DECISION_TEXT, "a completely different answer", verifier="someone-else")
 
 
+@_needs_nestor
 def test_resealing_a_rejected_pair_raises_checkpoint_rejected(tmp_path):
     with _open(tmp_path) as cm:
         sealed = cm.seal(DECISION_TEXT, CHOSEN_OPTION)
@@ -385,6 +407,7 @@ def test_module_imports_and_nestor_available_returns_a_bool_without_asserting_ne
     assert isinstance(checkpoint_memory.nestor_available(), bool)
 
 
+@_needs_nestor
 def test_sealing_writes_to_this_root_own_ledger_not_the_process_cwd(tmp_path):
     root = tmp_path / "checkpoints"
     with _open(tmp_path) as cm:

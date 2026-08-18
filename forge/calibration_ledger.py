@@ -34,9 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 
@@ -168,17 +166,6 @@ def resolve_prediction(
     record["resolved"] = True
     store.put(PREDICTIONS, record, record_id=prediction_id)
     return record
-
-
-def _resolved_pairs(builder_id: str, root: Path | None) -> list[tuple[float, bool]]:
-    """The `(confidence, outcome)` pairs `calibration` grades — resolved
-    predictions only; a pending prediction has no outcome to score yet."""
-    store = _store(builder_id, root)
-    pairs: list[tuple[float, bool]] = []
-    for rec in store.all(PREDICTIONS):
-        if rec.get("resolved"):
-            pairs.append((float(rec["confidence"]), bool(rec["outcome"])))
-    return pairs
 
 
 def scorecard(builder_id: str, *, root: Path | None = None) -> dict:

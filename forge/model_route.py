@@ -32,7 +32,7 @@ live once the model exists — the same "machinery real, D7 input stubbed" postu
 bites 0-1 took.
 
 Usage:
-    from model_route import route
+    from forge.model_route import route
     d = route(verified_manifest)              # host from OLLAMA_HOST or default
     if d.denial: refuse(d.denial)             # declared-not-ambient refusal
     else: run(..., allow_net=d.allow_net)     # Kart gets net ONLY for permitted cloud
@@ -40,9 +40,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
