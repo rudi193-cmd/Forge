@@ -8,7 +8,10 @@ other reachable contradiction, reused unwrapped as `CheckpointConflict`).
 **Honest environment note, same as bite 1's own test files** — these tests
 exercise the REAL Nestor library (except the soft-Nestor degradation test,
 which deliberately blocks it). See `tests/test_checkpoint_memory.py`'s
-module docstring for the `pip install -e /workspace/nestor` note.
+module docstring for the `pip install -e /workspace/nestor` note. Nestor is
+a SOFT dependency of the Forge, so this file does not require it at
+collection time — tests that go through the real library are marked
+`@_needs_nestor` and skip cleanly when it isn't installed.
 
 Written test-first, before `stores/checkpoint_calibration.py` existed.
 """
@@ -30,6 +33,15 @@ checkpoint_memory = checkpoint_calibration.checkpoint_memory
 
 _HAS_FSRS = checkpoint_calibration.checkpoint_schedule.fsrs_available()
 _needs_fsrs = pytest.mark.skipif(not _HAS_FSRS, reason="fsrs not installed in this environment")
+
+# Nestor is a SOFT dependency of the Forge — most tests below drive the real
+# `checkpoint_memory.py` (via resurface/seal), which needs real Nestor to do
+# anything, so they must skip (not hard-fail) when it isn't installed.
+# `test_soft_nestor_on_resurface_...` itself also needs this: it proves
+# Nestor is usable again right after the block exits, which is only a
+# meaningful assertion when Nestor genuinely is installed here.
+_HAS_NESTOR = checkpoint_memory.nestor_available()
+_needs_nestor = pytest.mark.skipif(not _HAS_NESTOR, reason="nestor not installed in this environment")
 
 _SUBSTANTIVE_JUSTIFICATION = (
     "I re-measured the reporting query at 1.2s with joins versus 40ms on the "
@@ -88,6 +100,7 @@ def _seal_original_auth_decision(root: Path, builder_id: str = BUILDER_A) -> Non
 
 # ── 1. held ──────────────────────────────────────────────────────────────────
 
+@_needs_nestor
 def test_resurface_held_confirms_and_does_not_reseal(tmp_path, monkeypatch):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -129,6 +142,7 @@ def test_resurface_held_confirms_and_does_not_reseal(tmp_path, monkeypatch):
 
 # ── 2. regressed — the #12 headline ─────────────────────────────────────────
 
+@_needs_nestor
 def test_resurface_regressed_rejects_prior_and_seals_new_answer(tmp_path, monkeypatch):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -211,6 +225,7 @@ def test_resurface_regressed_rejects_prior_and_seals_new_answer(tmp_path, monkey
     assert CHOSEN_ANSWER not in responder2.confirm_prompts[0]
 
 
+@_needs_nestor
 def test_resurface_regressed_prompt_shows_the_prior_answer(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -247,6 +262,7 @@ def test_resurface_with_no_prior_seal_at_all_raises(tmp_path):
     assert responder.choose_calls == []
 
 
+@_needs_nestor
 def test_resurface_a_surface_that_was_never_itself_sealed_raises(tmp_path):
     """`has_sealed()` is True for the decision-type (something else was
     sealed under it), but THIS surface never resolved to a sealed hit —
@@ -266,6 +282,7 @@ def test_resurface_a_surface_that_was_never_itself_sealed_raises(tmp_path):
 
 # ── 4. contradiction surfaces (reuse, not rebuild) ──────────────────────────
 
+@_needs_nestor
 def test_conflicting_seal_from_a_different_verifier_raises_checkpoint_conflict(tmp_path):
     """Pins that Nestor's own `ConflictingSealError` — surfaced by
     `checkpoint_memory.py` as `CheckpointConflict` — is reachable through
@@ -294,6 +311,7 @@ def test_conflicting_seal_from_a_different_verifier_raises_checkpoint_conflict(t
 _T0 = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
 
 
+@_needs_nestor
 def test_resurface_held_records_a_future_due_date_and_persists_a_card(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -312,6 +330,7 @@ def test_resurface_held_records_a_future_due_date_and_persists_a_card(tmp_path):
     assert card["due"] == outcome.next_due
 
 
+@_needs_nestor
 def test_resurface_regressed_records_a_review_too(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -328,6 +347,7 @@ def test_resurface_regressed_records_a_review_too(tmp_path):
     assert datetime.fromisoformat(outcome.next_due) > _T0
 
 
+@_needs_nestor
 def test_two_held_resurfaces_advance_the_same_card(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -352,6 +372,7 @@ def _resurface_held(root, responder, now=_T0):
     )
 
 
+@_needs_nestor
 def test_held_justification_is_scored_and_surfaced_on_the_outcome(tmp_path):
     """The score itself is fsrs-independent — assert the engagement value
     regardless of whether real FSRS is installed."""
@@ -377,6 +398,7 @@ def test_held_justification_is_scored_and_surfaced_on_the_outcome(tmp_path):
     assert declined.engagement is None  # no signal, not a fabricated 0.0
 
 
+@_needs_nestor
 @_needs_fsrs
 def test_a_re_argued_hold_is_due_later_than_a_thin_hold_which_is_due_later_than_none(tmp_path):
     """The wire actually moving the schedule: Easy (re-argued) pushes the next
@@ -398,6 +420,7 @@ def test_a_re_argued_hold_is_due_later_than_a_thin_hold_which_is_due_later_than_
     assert due_easy > due_good > due_hard
 
 
+@_needs_nestor
 def test_a_hold_is_never_blocked_by_a_thin_justification(tmp_path):
     """Non-punitive: a rubber-stamp justification still leaves the decision
     held and sealed — only the review cadence tightens."""
@@ -412,6 +435,7 @@ def test_a_hold_is_never_blocked_by_a_thin_justification(tmp_path):
         assert result["canonical"] == CHOSEN_ANSWER  # unchanged — a hold, not a reseal
 
 
+@_needs_nestor
 def test_a_responder_without_justify_reverts_to_pre_wire_behavior(tmp_path):
     """Duck-typing: a Responder that only does confirm/choose is never asked to
     justify, so engagement is None and the hold grades Good exactly as it did
@@ -456,6 +480,7 @@ def _nestor_blocked():
         sys.modules.update(saved)
 
 
+@_needs_nestor
 def test_soft_nestor_on_resurface_degrades_honestly_never_crashes(tmp_path):
     root = tmp_path / "checkpoints"
     responder = ScriptedResponder()

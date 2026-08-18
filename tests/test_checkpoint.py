@@ -8,7 +8,10 @@ learning", 2026-08-11).
 here except the soft-Nestor degradation test, which deliberately blocks it).
 See that file's module docstring for the `pip install -e /workspace/nestor`
 note and the `NESTOR_SEAL_KEY`-unset `RuntimeWarning` this repo's tests all
-silence the same way.
+silence the same way. Nestor is a SOFT dependency of the Forge, so this file
+does not require it at collection time — tests that go through the real
+library are marked `@_needs_nestor` and skip cleanly when it isn't
+installed.
 
 Every fixture here calls `checkpoint.run_checkpoint` through a fully
 SCRIPTED `Responder` (`ScriptedResponder`, below) — no real maker UI exists
@@ -36,6 +39,17 @@ ChoiceResult = checkpoint.ChoiceResult
 pytestmark = pytest.mark.filterwarnings(
     "ignore:NESTOR_SEAL_KEY not set.*:RuntimeWarning"
 )
+
+# Nestor is a SOFT dependency of the Forge — most tests below drive the real
+# `checkpoint_memory.py`, which needs real Nestor to seal/check anything, so
+# they must skip (not hard-fail) when it isn't installed. Mirrors the
+# `_needs_fsrs` pattern in tests/test_checkpoint_calibration.py /
+# tests/test_checkpoint_schedule.py. `test_soft_nestor_degradation_...`
+# itself also needs this: it proves Nestor is usable again right after the
+# block exits, which is only a meaningful assertion when Nestor genuinely is
+# installed in this environment.
+_HAS_NESTOR = checkpoint.checkpoint_memory.nestor_available()
+_needs_nestor = pytest.mark.skipif(not _HAS_NESTOR, reason="nestor not installed in this environment")
 
 BUILDER_A = "a" * 32  # path-safe under principal.py's _check_builder_id, same fixture value test_checkpoint_memory.py uses
 
@@ -96,6 +110,7 @@ def _seal_original_auth_decision(root: Path, builder_id: str = BUILDER_A) -> Non
 
 # ── 1. full Socratic on a fresh decision-type ───────────────────────────────
 
+@_needs_nestor
 def test_full_socratic_on_fresh_decision_type_seals_and_is_a_sealed_hit_on_repeat(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -146,6 +161,7 @@ def test_decision_with_no_options_is_refused_before_touching_memory(tmp_path):
 
 # ── 2. loose recognition — the headline ─────────────────────────────────────
 
+@_needs_nestor
 def test_loose_recognition_reworded_decision_routes_to_recognize_band_and_seals_on_confirm(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -183,6 +199,7 @@ def test_loose_recognition_reworded_decision_routes_to_recognize_band_and_seals_
         assert result["canonical"] == CHOSEN_ANSWER
 
 
+@_needs_nestor
 def test_auto_band_on_a_genuine_sealed_hit_is_a_light_confirm_with_no_re_seal(tmp_path, monkeypatch):
     """The auto band, the recognize band's stricter sibling: the SAME
     wording that was sealed (not a rewording) is a real `sealed=True` hit,
@@ -215,6 +232,7 @@ def test_auto_band_on_a_genuine_sealed_hit_is_a_light_confirm_with_no_re_seal(tm
 
 # ── 3. the escape teaches ────────────────────────────────────────────────────
 
+@_needs_nestor
 def test_recognize_band_different_teaches_reject_match_and_falls_through_to_socratic(tmp_path, monkeypatch):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -269,6 +287,7 @@ def test_recognize_band_different_teaches_reject_match_and_falls_through_to_socr
 
 # ── 4. "you choose" deferral ─────────────────────────────────────────────────
 
+@_needs_nestor
 def test_deferral_seals_as_a_taught_decision_and_a_repeat_does_not_re_socratic(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -306,6 +325,7 @@ def test_deferral_seals_as_a_taught_decision_and_a_repeat_does_not_re_socratic(t
     assert responder2.choose_calls == []
 
 
+@_needs_nestor
 def test_deferral_with_no_recommended_falls_back_to_first_option(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -361,6 +381,7 @@ def _nestor_blocked():
         sys.modules.update(saved)
 
 
+@_needs_nestor
 def test_soft_nestor_degradation_runs_full_socratic_without_crashing(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -417,6 +438,7 @@ def test_soft_nestor_degradation_runs_full_socratic_without_crashing(tmp_path):
 
 # ── 6. band thresholds ───────────────────────────────────────────────────────
 
+@_needs_nestor
 def test_a_clearly_different_decision_routes_to_socratic_not_recognize(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -442,6 +464,7 @@ def test_a_clearly_different_decision_routes_to_socratic_not_recognize(tmp_path)
     assert outcome.chosen == "Postgres"
 
 
+@_needs_nestor
 def test_recognize_threshold_is_the_forges_own_not_nestors(tmp_path):
     """The design doc's own line, restated as a test: the recognize
     threshold is a parameter of THIS module, not Nestor's `sealed` flag.
@@ -476,6 +499,7 @@ def test_recognize_threshold_is_the_forges_own_not_nestors(tmp_path):
 
 # ── 7. engagement signal (bite 3) — a seal-time signal, never a block ────────
 
+@_needs_nestor
 def test_socratic_with_a_substantive_rationale_scores_high_engagement_not_rubber_stamp(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -498,6 +522,7 @@ def test_socratic_with_a_substantive_rationale_scores_high_engagement_not_rubber
     assert outcome.rubber_stamp is False
 
 
+@_needs_nestor
 def test_socratic_with_a_thin_rationale_is_flagged_rubber_stamp_but_still_seals(tmp_path):
     """The whole point: a rubber-stamp is a SIGNAL, not a gate — the seal
     happens anyway (checkpoint_engagement's "never blocks")."""
@@ -520,6 +545,7 @@ def test_socratic_with_a_thin_rationale_is_flagged_rubber_stamp_but_still_seals(
         assert cm.check(decision.surface)["sealed"] is True
 
 
+@_needs_nestor
 def test_an_empty_rationale_is_the_loudest_rubber_stamp(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -534,6 +560,7 @@ def test_an_empty_rationale_is_the_loudest_rubber_stamp(tmp_path):
     assert outcome.sealed is True
 
 
+@_needs_nestor
 def test_auto_and_recognize_confirms_have_no_engagement_reading(tmp_path):
     """Reusing a PRIOR seal (auto/recognize confirm) means the maker gave no
     fresh rationale — engagement is None, not a fabricated 0.0, and never a
@@ -597,6 +624,7 @@ def _schema_decision():
     )
 
 
+@_needs_nestor
 def test_socratic_commit_attests_but_not_as_human_by_default(tmp_path):
     """A commit writes an attestation bound to the builder, but does NOT claim a
     human signed it: a ScriptedResponder is a machine, the Forge has no D11
@@ -618,6 +646,7 @@ def test_socratic_commit_attests_but_not_as_human_by_default(tmp_path):
     assert _gov.has_decision_attestation(BUILDER_A, pid, require_human=True, root=root) is False
 
 
+@_needs_nestor
 def test_an_explicit_human_binding_produces_a_human_attestation(tmp_path):
     """When a caller CAN establish human presence (a real UI, post-D11), it
     passes by_human=True and the attestation counts under require_human — the
@@ -635,6 +664,7 @@ def test_an_explicit_human_binding_produces_a_human_attestation(tmp_path):
     assert _gov.has_decision_attestation(BUILDER_A, pid, require_human=True, root=root) is True
 
 
+@_needs_nestor
 def test_auto_confirm_attests_the_reaffirmation(tmp_path):
     root = tmp_path / "checkpoints"
     _seal_original_auth_decision(root)
@@ -646,6 +676,7 @@ def test_auto_confirm_attests_the_reaffirmation(tmp_path):
     assert outcome.attestation_id  # a confirm is a fresh on-the-record sign-off
 
 
+@_needs_nestor
 def test_park_checkpoint_enqueues_evidence_and_seals_nothing(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(
@@ -660,6 +691,7 @@ def test_park_checkpoint_enqueues_evidence_and_seals_nothing(tmp_path):
         assert cm.check(ORIGINAL_SURFACE)["sealed"] is False
 
 
+@_needs_nestor
 def test_resume_checkpoint_seals_attests_and_resolves_the_item(tmp_path):
     root = tmp_path / "checkpoints"
     decision = Decision(decision_type=DECISION_TYPE, surface=ORIGINAL_SURFACE, options=AUTH_OPTIONS)
