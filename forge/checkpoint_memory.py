@@ -252,13 +252,11 @@ class CheckpointRejected(CheckpointMemoryError):
 # imported" to "the moment something in it actually needs Nestor."
 
 _NESTOR_MISSING_MSG = (
-    "stores/checkpoint_memory.py requires Nestor, which is NOT on PyPI "
-    "(see this module's docstring and stores/requirements.txt). For "
-    "local dev/testing, install it editable from the sibling checkout: "
-    "`pip install -e /workspace/nestor` (verify that path exists in your "
-    "environment first — `ls /workspace/nestor`). For a real deployment, "
-    "install from the pinned git SHA in stores/requirements.txt once one "
-    "is recorded at promotion time."
+    "forge/checkpoint_memory.py requires Nestor (nestor-meaning on PyPI). "
+    "For local dev/testing, install it editable from a sibling checkout: "
+    "`pip install -e ../Nestor` (verify the path exists in your environment "
+    "first). For a real deployment, `pip install nestor-meaning` or install "
+    "from the pinned git tag in pyproject.toml's [project.optional-dependencies]."
 )
 
 # `None` until the first successful `_nestor()` call — deliberately only
