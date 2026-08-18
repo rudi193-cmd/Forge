@@ -142,7 +142,6 @@ Usage (dev CLI, mirroring `checkpoint.py`'s own `demo` shape):
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import sys
 from dataclasses import dataclass
