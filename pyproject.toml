@@ -17,9 +17,8 @@ test = ["pytest"]
 # promotion through willow-gate, a different verifier confers canonical via a
 # custody checkpoint signed by their key. Reuses nestor.cloud_seal wholesale;
 # fail-closes on import when the seam is absent (no gate → the host's local
-# check stands). Both are fleet siblings installed alongside; a bare install
-# fails closed when they are not.
-trust = ["nestor", "willow-gate"]
+# check stands). nestor-meaning[gate] pulls in willow-gate transitively.
+trust = ["nestor-meaning[gate]"]
 
 [tool.setuptools.packages.find]
 include = ["forge*"]
