@@ -15,6 +15,7 @@
 # the house already grew this (willow-mcp `#66` sycophancy score); the Forge
 # re-points it at makers instead of rebuilding it.
 #
+#!/usr/bin/env python3
 # Vendored from willow-gate (willow-memory/willow-gate, src/willow_gate/
 # friction_floor.py), Apache-2.0. Copied rather than depended-on because this
 # module is pure stdlib (re/statistics/dataclasses) with NO egress and NO PGP,

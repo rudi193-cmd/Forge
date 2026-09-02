@@ -5,13 +5,10 @@ directly against `forge.soil_store.FilesystemSoilStore` + `tmp_path`, the
 same injected-store pattern `tests/test_checkpoint_governance.py` uses one
 layer up (through `checkpoint_governance`'s wrapper).
 
-NOTE on `resolve()` and unknown `item_id`: the vendored original returned
-`{"error": "unknown_item", "item_id": item_id}` — a silently-swallowed error
-a caller could easily forget to check. A concurrent edit already in this
-worktree (uncommitted; see `git diff -- forge/human_loop.py`) changed this to
-`raise HumanLoopError(...)` instead, matching every other invalid-input path
-in this module. That fix is applied, so this file tests the raise; no
-fallback/dict-shaped assertion or TODO is needed.
+NOTE on `resolve()` and unknown `item_id`: upstream returns
+`{"error": "unknown_item", "item_id": item_id}` rather than raising — the
+Forge keeps this byte-for-byte (vendor_sync_check enforces it). Callers must
+check for the error dict; only invalid *status* values raise HumanLoopError.
 """
 from __future__ import annotations
 
@@ -126,22 +123,26 @@ def test_resolve_rejects_an_unknown_status(store):
         human_loop.resolve(store, item["id"], resolved_by="rudi", status="approved")
 
 
-def test_resolve_raises_on_an_unknown_item_id(store):
-    """The forbidden act: resolving an item_id that was never enqueued must
-    be refused, not silently return an error-shaped dict a caller could fail
-    to check. (See module docstring's note — the fix is already applied on
-    this branch.)"""
-    with pytest.raises(human_loop.HumanLoopError):
-        human_loop.resolve(store, "never-enqueued-id", resolved_by="rudi")
+def test_resolve_returns_error_dict_for_unknown_item_id(store):
+    result = human_loop.resolve(store, "never-enqueued-id", resolved_by="rudi")
+    assert result == {"error": "unknown_item", "item_id": "never-enqueued-id"}
 
 
-def test_resolve_raises_on_an_unknown_item_id_in_an_otherwise_populated_queue(store):
-    """Same forbidden act, but with real neighboring items in the store — a
-    lookup miss must not be masked by a store that has other data in it."""
+def test_resolve_returns_error_dict_when_queue_has_other_items(store):
     human_loop.enqueue(store, kind="review", title="t1", source_agent="a")
     human_loop.enqueue(store, kind="consent", title="t2", source_agent="a")
-    with pytest.raises(human_loop.HumanLoopError):
-        human_loop.resolve(store, "still-unknown", resolved_by="rudi")
+    result = human_loop.resolve(store, "still-unknown", resolved_by="rudi")
+    assert result == {"error": "unknown_item", "item_id": "still-unknown"}
+
+
+def test_queue_stats_counts_by_status(store):
+    a = human_loop.enqueue(store, kind="review", title="a", source_agent="x")
+    b = human_loop.enqueue(store, kind="review", title="b", source_agent="x")
+    human_loop.resolve(store, a["id"], resolved_by="rudi", status="dismissed")
+    stats = human_loop.queue_stats(store)
+    assert stats.get(human_loop.QUEUE_OPEN, 0) == 1
+    assert stats.get("dismissed", 0) == 1
+    assert stats.get("resolved", 0) == 0
 
 
 # ── list_queue() ─────────────────────────────────────────────────────────────

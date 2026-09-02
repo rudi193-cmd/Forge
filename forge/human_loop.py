@@ -216,7 +216,7 @@ def resolve(store, item_id: str, *, resolved_by: str, status: str = "resolved", 
         raise HumanLoopError(f"invalid status {st!r}; expected one of {QUEUE_RESOLUTIONS}")
     existing = store.get(QUEUE_COLLECTION, item_id)
     if not existing:
-        raise HumanLoopError(f"unknown item {item_id!r}")
+        return {"error": "unknown_item", "item_id": item_id}
     item = _clean(existing)
     item.update(status=st, resolved_by=resolved_by, resolved_at=_now(), note=note or "")
     store.put(QUEUE_COLLECTION, item, record_id=item_id)
@@ -233,3 +233,13 @@ def list_queue(store, *, status: str = QUEUE_OPEN, kind: str = "", limit: int = 
         rows = [r for r in rows if r.get("kind") == kind.strip().lower()]
     rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return rows[:max(0, limit)]
+
+
+def queue_stats(store) -> dict[str, int]:
+    """Counts by status across the whole queue (unfiltered)."""
+    stats: dict[str, int] = {}
+    for r in store.all(QUEUE_COLLECTION):
+        if isinstance(r, dict) and "id" in r:
+            s = r.get("status", "open")
+            stats[s] = stats.get(s, 0) + 1
+    return stats
