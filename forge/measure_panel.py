@@ -162,15 +162,39 @@ class Instrument(Protocol):
 
 # ── shared helpers ─────────────────────────────────────────────────────────
 
+# Directories the panel never walks. Each is a TOOL'S cache or output, not an
+# artifact of the build: a file in it was written by mypy/pytest/ruff/pip/npm/
+# the packager, not by the maker, and measuring it measures the tool. Issue #7:
+# with only `.git` pruned, a 400 KB `.mypy_cache/*.db` was the byte-share
+# dominator AND carried a `.db` smell — the census/hygiene convergence the panel
+# treats as its highest signal — and with `--builder-id` set it paged a human
+# about nothing. Running the panel on willow-mcp's tree returned a findings
+# list dominated by `.mypy_cache`. A named set, not a heuristic: anything not
+# listed here IS walked, so an unusual cache shows up rather than vanishing.
+PRUNED_DIRS: frozenset[str] = frozenset({
+    ".git",            # history, not the tree
+    ".mypy_cache", ".pytest_cache", ".ruff_cache", ".hypothesis",  # tool caches
+    "__pycache__",     # bytecode
+    ".venv", "venv", "node_modules", ".tox", ".nox",  # installed dependencies
+    "dist", "build",   # packager output (the artifact is what it was built FROM)
+})
+_PRUNED_SUFFIXES: tuple[str, ...] = (".egg-info",)
+
+
+def _pruned(name: str) -> bool:
+    return name in PRUNED_DIRS or name.endswith(_PRUNED_SUFFIXES)
+
+
 def _iter_files(build_dir: Path):
     """Yield the real files under `build_dir`, NOT following symlinks and
-    skipping `.git`. Uses `os.walk(followlinks=False)` (rglob follows symlinked
-    directories on 3.11) and skips symlinked FILES too — so a symlink aliasing
-    the dominator can't mask the census alarm, and hygiene can't phantom-flag an
-    alias. (Both holes were found by the adversarial audit of the first cut.)"""
+    skipping `PRUNED_DIRS` (tool caches and outputs — see the constant). Uses
+    `os.walk(followlinks=False)` (rglob follows symlinked directories on 3.11)
+    and skips symlinked FILES too — so a symlink aliasing the dominator can't
+    mask the census alarm, and hygiene can't phantom-flag an alias. (Both holes
+    were found by the adversarial audit of the first cut.)"""
     build_dir = Path(build_dir)
     for root, dirs, files in os.walk(build_dir, followlinks=False):
-        dirs[:] = [d for d in dirs if d != ".git"]  # prune .git subtrees
+        dirs[:] = [d for d in dirs if not _pruned(d)]  # prune caches/outputs
         for name in files:
             p = Path(root) / name
             if p.is_symlink():

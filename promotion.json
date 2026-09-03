@@ -7,6 +7,7 @@
   "core_module": "forge",
   "pure_core": "forge",
   "semantic_seam": "forge.checkpoint_memory:CheckpointMemory",
-  "host_repointed": false,
-  "major": "python"
+  "host_repointed": true,
+  "major": "python",
+  "notes": "host_repointed flipped 2026-09-02: safe-app-store archived its 17 store-side copies of the engine to stores/_forge_extracted/ on 2026-08-18 (see that directory's README) and its one live consumer, stores/readiness_corpus.py's `assess`, imports forge.measure_panel from the installed package. The store's install line is a deliberate comment until forge-play is on PyPI; the pin is Phase 5 of docs/design/the-forge-engine-build.md, not a gate. No `trust` block yet: tools/promotion_trust.py produces one, and the ratifying half is the verifier's act (issue #8)."
 }

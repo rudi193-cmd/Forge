@@ -17,8 +17,22 @@ query engine returns `count(a)=1` for an OPTIONAL MATCH that matched nothing
 MINUS the targets of any `CALLS` edge, minus entry points (a genuine root is
 not dead) and language builtins. That set difference is the pure, tested core
 (`_dead_functions`); the subprocess plumbing around it degrades to
-`InstrumentUnavailable` on any failure (binary absent, non-zero exit, unpardable
+`InstrumentUnavailable` on any failure (binary absent, non-zero exit, unreadable
 output) — the panel's honest-coverage path, never a crash.
+
+**Issue #9 — format drift must not read as clean.** The first cut parsed the
+tool's indented TEXT table. The tool moved to compact JSON; the text parser
+yielded the whole payload as one row, the "malformed row" guard skipped it,
+and the instrument reported *found nothing* on every codebase — routing a
+*could-not-read* into the *looked-and-saw-nothing* bucket, which is precisely
+the distinction the panel exists to protect. Now: the query result is read as
+JSON (`structuredContent.rows`, with the `content[0].text` JSON as the
+fallback), the CLI is called through `--args-file` (the raw-JSON argument
+form is deprecated upstream), and a payload the reader cannot make rows of —
+or one that reports `total > 0` while yielding no rows — raises
+`InstrumentUnavailable`, so the panel says COULD NOT RUN rather than clean.
+A panel that reports clean is worse than one that reports uncovered, because
+uncovered is actionable and clean is not.
 
 Not in the panel's dependency-free DEFAULT_INSTRUMENTS: this needs the external
 binary (downloaded on first use, runs a daemon), so a caller opts in
@@ -29,8 +43,10 @@ uncovered class — the sigmap honesty.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -46,38 +62,75 @@ InstrumentUnavailable = measure_panel.InstrumentUnavailable
 
 _DEFAULT_BINARY = "codebase-memory-mcp"
 
-# Column order matters — the pure parser splits on it. `qn` and `entry` never
-# contain spaces; `file_path` might, so it is LAST and split with maxsplit.
+# Column order is fixed by the RETURN clause and read positionally.
 _Q_ALL = "MATCH (f:Function) RETURN f.qualified_name AS qn, f.is_entry_point AS entry, f.file_path AS file"
 _Q_CALLED = "MATCH (a)-[:CALLS]->(f:Function) RETURN f.qualified_name AS qn"
 
 
 # ── the pure core (unit-tested without the binary) ──────────────────────────
 
-def _data_rows(text: str) -> list[str]:
-    """The indented data rows of codebase-memory's text table, dropping its
-    `rows:`/`(cols …)` header and `total:` footer."""
-    out: list[str] = []
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith("rows:") or s.startswith("total:") or s.startswith("(cols"):
-            continue
-        out.append(s)
+class UnreadableResult(ValueError):
+    """The tool answered, but not in a shape this reader can turn into rows.
+    Distinct from an empty result: raised so the caller can name a coverage
+    gap rather than report clean."""
+
+
+def _rows(payload: dict | str) -> list[list[str]]:
+    """The data rows of a `query_graph` result, as lists of strings.
+
+    Accepts the CLI's JSON envelope (`{"structuredContent": {"columns", "rows",
+    "total"}, "content": [{"text": "<the same as JSON>"}]}`) or the bare
+    result object, or the result as a JSON string. Refuses — `UnreadableResult`
+    — anything else, including the old indented text table, so that a format
+    change surfaces as *could not read* and never as *no rows*."""
+    obj: object = payload
+    if isinstance(obj, str):
+        s = obj.strip()
+        if not s.startswith("{"):
+            raise UnreadableResult("query result is not JSON (the text-table format is no longer read)")
+        try:
+            obj = json.loads(s)
+        except json.JSONDecodeError as e:
+            raise UnreadableResult(f"query result is not valid JSON: {e}") from e
+    if not isinstance(obj, dict):
+        raise UnreadableResult(f"query result is a {type(obj).__name__}, not an object")
+    result = obj.get("structuredContent")
+    if not isinstance(result, dict) or "rows" not in result:
+        content = obj.get("content")
+        if isinstance(content, list) and content and isinstance(content[0], dict):
+            text = content[0].get("text", "")
+            return _rows(text) if isinstance(text, str) and text.strip().startswith("{") else _fail_content()
+        result = obj  # a bare result object
+    rows = result.get("rows")
+    if not isinstance(rows, list):
+        raise UnreadableResult("query result has no `rows` list")
+    total = result.get("total")
+    if isinstance(total, int) and total > 0 and not rows:
+        raise UnreadableResult(f"query result reports total={total} but carries no rows")
+    out: list[list[str]] = []
+    for r in rows:
+        if not isinstance(r, list):
+            raise UnreadableResult(f"row is a {type(r).__name__}, not a list")
+        out.append(["" if v is None else str(v) for v in r])
     return out
 
 
-def _dead_functions(all_text: str, called_text: str) -> list[tuple[str, str]]:
+def _fail_content() -> list[list[str]]:
+    raise UnreadableResult("query result carries neither structuredContent.rows nor JSON text content")
+
+
+def _dead_functions(all_rows: list[list[str]], called_rows: list[list[str]]) -> list[tuple[str, str]]:
     """`(qualified_name, file_path)` for every function with no caller — the
     set difference `all_functions - called - entry_points - builtins`. Pure:
-    takes the two query result texts, returns the dead set. `entry` is the
-    quoted `"true"`/`"false"` codebase-memory prints."""
-    called = set(_data_rows(called_text))  # each row is a bare qualified_name
+    takes the two query results as rows, returns the dead set. `entry` is the
+    string form of the tool's boolean (`"true"`/`"false"`, or Python's
+    `True`/`False` stringified — both accepted)."""
+    called = {r[0] for r in called_rows if r}
     dead: list[tuple[str, str]] = []
-    for row in _data_rows(all_text):
-        parts = row.split(None, 2)  # qn, entry, file (file last — may contain spaces)
-        if len(parts) < 3:
-            continue
-        qn, entry, file = parts[0], parts[1].strip('"'), parts[2]
+    for row in all_rows:
+        if len(row) < 3:
+            raise UnreadableResult(f"function row has {len(row)} columns, expected qn/entry/file: {row!r}")
+        qn, entry, file = row[0], row[1].strip('"').lower(), row[2]
         if qn in called:
             continue                    # it has a caller — not dead
         if entry == "true":
@@ -93,7 +146,8 @@ def _dead_functions(all_text: str, called_text: str) -> list[tuple[str, str]]:
 class CallGraphInstrument:
     """Drives `codebase-memory-mcp` to flag dead code (`fan_in=0`). `covers` the
     `call-graph` class. Raises `InstrumentUnavailable` for any environmental
-    failure so the panel records a coverage gap rather than crashing."""
+    failure — including an answer it cannot read — so the panel records a
+    coverage gap rather than crashing or reporting clean."""
 
     name = "call-graph"
     covers = "call-graph"
@@ -115,10 +169,13 @@ class CallGraphInstrument:
             project = (idx.get("structuredContent") or {}).get("project")
             if not project:
                 raise InstrumentUnavailable(f"index_repository returned no project: {idx!r}")
-            all_text = self._query_text(exe, project, _Q_ALL)
-            called_text = self._query_text(exe, project, _Q_CALLED)
+            all_rows = self._query_rows(exe, project, _Q_ALL)
+            called_rows = self._query_rows(exe, project, _Q_CALLED)
+            dead = _dead_functions(all_rows, called_rows)
         except InstrumentUnavailable:
             raise
+        except UnreadableResult as e:
+            raise InstrumentUnavailable(f"could not read codebase-memory-mcp's output: {e}") from e
         except Exception as e:  # noqa: BLE001 — any drive failure is a coverage gap, not a crash
             raise InstrumentUnavailable(f"codebase-memory-mcp drive failed: {type(e).__name__}: {e}") from e
         finally:
@@ -126,7 +183,7 @@ class CallGraphInstrument:
                 self._call(exe, "delete_project", {"project": project}, tolerant=True)
 
         out: list[Finding] = []
-        for qn, file in _dead_functions(all_text, called_text):
+        for qn, file in dead:
             out.append(Finding(
                 instrument=self.name, artifact=file, metric="fan_in", value=0, severity="med",
                 detail=f"{qn} has no callers (fan_in=0) — dead code the ranker would still 'find'; the box's decoy",
@@ -136,15 +193,26 @@ class CallGraphInstrument:
     # -- subprocess plumbing --------------------------------------------------
 
     def _call(self, exe: str, tool: str, args: dict, *, tolerant: bool = False) -> dict:
+        # `--args-file`: the raw-JSON positional form prints a deprecation
+        # warning and is slated for removal; a file survives that removal.
+        fd, path = tempfile.mkstemp(prefix="forge-cbm-", suffix=".json")
         try:
-            proc = subprocess.run(
-                [exe, "cli", "--json", tool, json.dumps(args)],
-                capture_output=True, text=True, timeout=self.timeout,
-            )
-        except (subprocess.TimeoutExpired, OSError) as e:
-            if tolerant:
-                return {}
-            raise InstrumentUnavailable(f"{tool} failed to run: {e}") from e
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(args, fh)
+            try:
+                proc = subprocess.run(
+                    [exe, "cli", "--json", tool, "--args-file", path],
+                    capture_output=True, text=True, timeout=self.timeout,
+                )
+            except (subprocess.TimeoutExpired, OSError) as e:
+                if tolerant:
+                    return {}
+                raise InstrumentUnavailable(f"{tool} failed to run: {e}") from e
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
         for line in reversed(proc.stdout.splitlines()):  # last JSON line; skip log/hint lines
             line = line.strip()
             if line.startswith("{"):
@@ -159,10 +227,8 @@ class CallGraphInstrument:
             return {}
         raise InstrumentUnavailable(f"{tool}: no JSON in output (exit {proc.returncode})")
 
-    def _query_text(self, exe: str, project: str, query: str) -> str:
-        d = self._call(exe, "query_graph", {"project": project, "query": query})
-        content = d.get("content") or [{}]
-        return content[0].get("text", "") if content else ""
+    def _query_rows(self, exe: str, project: str, query: str) -> list[list[str]]:
+        return _rows(self._call(exe, "query_graph", {"project": project, "query": query}))
 
 
 if __name__ == "__main__":
