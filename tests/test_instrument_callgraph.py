@@ -1,17 +1,20 @@
-"""Tests for stores/instrument_callgraph.py — the panel's first real fleet
+"""Tests for forge/instrument_callgraph.py — the panel's first real fleet
 instrument (codebase-memory-mcp call graph, docs/design/the-forge-measure.md).
 
 The dead-code SET DIFFERENCE is a pure function, tested against captured
 codebase-memory output (no binary needed). The real end-to-end drive is
 `skipif`'d when the binary isn't runnable (as bite 0 skips when bwrap is
 absent). The unavailable-path is always tested.
+
+Issue #9: the reader must never turn "could not read" into "found nothing".
+The old text-table fixtures are kept below as the thing the reader now
+REFUSES, not the thing it parses.
 """
 from __future__ import annotations
 
-import importlib.util
+import json
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -20,41 +23,112 @@ import pytest
 from forge import instrument_callgraph as icg
 
 
-# ── the pure dead-code core (captured output, no binary) ─────────────────────
+# ── captured output, no binary ───────────────────────────────────────────────
 
-# Real query results captured from codebase-memory-mcp 0.10.0 on a 3-function
-# project (used<-main, dead_function uncalled, main entry-point).
-_ALL = """rows: 5  (cols: qn entry file)
+# The CLI's compact-JSON envelope for a 3-function project
+# (used<-main, dead_function uncalled, main entry-point), as the tool emits it now.
+def _envelope(columns, rows):
+    result = {"columns": columns, "rows": rows, "total": len(rows)}
+    return {"content": [{"type": "text", "text": json.dumps(result, separators=(",", ":"))}],
+            "structuredContent": result, "isError": False}
+
+
+_ALL = _envelope(["qn", "entry", "file"], [
+    ["tmp-cbm-probe.app.used", "false", "app.py"],
+    ["tmp-cbm-probe.app.dead_function", "false", "app.py"],
+    ["tmp-cbm-probe.app.main", "true", "app.py"],
+    ["builtins.len", "false", "<python-builtins>"],
+    ["builtins.print", "false", "<python-builtins>"],
+])
+_CALLED = _envelope(["qn"], [["tmp-cbm-probe.app.used"]])
+
+# What the tool USED to print — the format the first cut parsed. Kept as the
+# negative case: this is what "silently zero rows on every codebase" looked like.
+_OLD_TEXT_TABLE = """rows: 5  (cols: qn entry file)
   tmp-cbm-probe.app.used "false" app.py
   tmp-cbm-probe.app.dead_function "false" app.py
   tmp-cbm-probe.app.main "true" app.py
-  builtins.len "false" <python-builtins>
-  builtins.print "false" <python-builtins>
 total: 5"""
-
-_CALLED = """rows: 1  (cols: qn)
-  tmp-cbm-probe.app.used
-total: 1"""
 
 
 def test_dead_functions_is_the_set_difference():
-    dead = icg._dead_functions(_ALL, _CALLED)
+    dead = icg._dead_functions(icg._rows(_ALL), icg._rows(_CALLED))
     assert dead == [("tmp-cbm-probe.app.dead_function", "app.py")]
-    # used is called; main is an entry point; builtins excluded — none dead
     qns = {qn for qn, _ in dead}
-    assert "tmp-cbm-probe.app.used" not in qns
-    assert "tmp-cbm-probe.app.main" not in qns
-    assert not any(f.startswith("<") for _, f in dead)
+    assert "tmp-cbm-probe.app.used" not in qns     # called
+    assert "tmp-cbm-probe.app.main" not in qns     # entry point
+    assert not any(f.startswith("<") for _, f in dead)  # builtins excluded
 
 
-def test_dead_functions_handles_a_file_path_with_spaces():
-    all_text = 'rows: 1  (cols: qn entry file)\n  pkg.mod.orphan "false" src/my dir/x.py\ntotal: 1'
-    dead = icg._dead_functions(all_text, "rows: 0\ntotal: 0")
-    assert dead == [("pkg.mod.orphan", "src/my dir/x.py")]  # file kept intact
+def test_rows_reads_the_text_content_when_structured_content_is_absent():
+    only_text = {"content": _ALL["content"]}
+    assert icg._rows(only_text) == icg._rows(_ALL)
+
+
+def test_rows_reads_a_bare_result_object_and_a_json_string():
+    bare = _ALL["structuredContent"]
+    assert icg._rows(bare) == icg._rows(_ALL)
+    assert icg._rows(json.dumps(bare)) == icg._rows(_ALL)
+
+
+def test_a_file_path_with_spaces_survives():
+    env = _envelope(["qn", "entry", "file"], [["pkg.mod.orphan", "false", "src/my dir/x.py"]])
+    dead = icg._dead_functions(icg._rows(env), [])
+    assert dead == [("pkg.mod.orphan", "src/my dir/x.py")]
+
+
+def test_python_style_booleans_are_accepted_for_entry():
+    env = _envelope(["qn", "entry", "file"], [["pkg.mod.root", True, "x.py"], ["pkg.mod.leaf", False, "x.py"]])
+    assert icg._dead_functions(icg._rows(env), []) == [("pkg.mod.leaf", "x.py")]
 
 
 def test_empty_results_yield_no_dead():
-    assert icg._dead_functions("rows: 0\ntotal: 0", "rows: 0\ntotal: 0") == []
+    empty = _envelope(["qn", "entry", "file"], [])
+    assert icg._dead_functions(icg._rows(empty), icg._rows(_envelope(["qn"], []))) == []
+
+
+# ── issue #9: could-not-read is never found-nothing ──────────────────────────
+
+def test_the_old_text_table_is_refused_not_parsed_to_zero_rows():
+    with pytest.raises(icg.UnreadableResult):
+        icg._rows(_OLD_TEXT_TABLE)
+
+
+def test_a_total_with_no_rows_is_refused():
+    env = _envelope(["qn", "entry", "file"], [])
+    env["structuredContent"]["total"] = 3
+    with pytest.raises(icg.UnreadableResult):
+        icg._rows(env)
+
+
+def test_a_short_row_is_refused_not_skipped():
+    """The first cut's `if len(parts) < 3: continue` is exactly the guard that
+    swallowed the whole payload. A row this reader can't place is a refusal."""
+    env = _envelope(["qn", "entry", "file"], [["only-one-column"]])
+    with pytest.raises(icg.UnreadableResult):
+        icg._dead_functions(icg._rows(env), [])
+
+
+def test_unreadable_output_becomes_a_coverage_gap_not_a_clean_report(tmp_path, monkeypatch):
+    """Drive `measure` with a fake binary path and a `_call` that answers in the
+    old text format: the instrument must raise InstrumentUnavailable (the panel
+    then says COULD NOT RUN), never return `[]`."""
+    fake = tmp_path / "codebase-memory-mcp"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    inst = icg.CallGraphInstrument(binary=str(fake))
+
+    def fake_call(exe, tool, args, *, tolerant=False):
+        if tool == "index_repository":
+            return {"structuredContent": {"project": "p"}}
+        if tool == "query_graph":
+            return {"content": [{"type": "text", "text": _OLD_TEXT_TABLE}]}
+        return {}
+
+    monkeypatch.setattr(inst, "_call", fake_call)
+    with pytest.raises(icg.InstrumentUnavailable) as e:
+        inst.measure(tmp_path)
+    assert "could not read" in str(e.value)
 
 
 # ── unavailable path (always runs) ───────────────────────────────────────────

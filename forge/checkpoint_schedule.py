@@ -184,13 +184,22 @@ def grade(outcome: str, engagement: float | None = None) -> int:
     cutoff `_HARD_MAX_ENGAGEMENT` IS `checkpoint_engagement.RUBBER_STAMP_FLOOR`
     (imported, not a second literal), so a held rationale grades Hard for
     exactly the scores `checkpoint_engagement.is_rubber_stamp` flags — the two
-    can't drift. `checkpoint_calibration.resurface` doesn't yet feed a non-None
-    engagement here (the resurface-held path captures no rationale to score —
-    the named next increment), so today it is reached with `engagement=None`;
-    bite 3 built the producer of this signal. A regression is `Again`
-    regardless of engagement: you did not hold it, so how hard you thought
-    about it doesn't enter. Kept non-circular by construction — see module
-    docstring."""
+    can't drift.
+
+    The wire is LIVE (bite 3, closed 2026-08-11): `checkpoint_calibration
+    .resurface` scores the held rationale with `checkpoint_engagement
+    .engagement_score` and passes it through `_record_review` →
+    `record_review(…, engagement=…)` → here. `engagement=None` is the
+    deliberate degraded path — a caller that never asked for a justification
+    (the CLI's plain confirm, a declined rationale) — and it grades Good, the
+    pre-wire behaviour. Proof: `tests/test_checkpoint_calibration.py` §6 "the
+    engagement→grade wire" (strong > 0.66 → Easy, thin < 0.34 → Hard, declined
+    → None, "no signal, not a fabricated 0.0"). This docstring said the wire
+    was absent for three weeks after it landed and led a reader to a confident
+    false negative (issue #6); it is reached from `record_review`, so the call
+    is not visible from here. A regression is `Again` regardless of engagement:
+    you did not hold it, so how hard you thought about it doesn't enter. Kept
+    non-circular by construction — see module docstring."""
     if outcome == OUTCOME_REGRESSED:
         return _RATING_AGAIN
     if outcome == OUTCOME_HELD:
