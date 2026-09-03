@@ -110,8 +110,11 @@ def test_fsrs_available_is_a_bool():
 def test_fsrs_available_is_false_when_blocked():
     with _fsrs_blocked():
         assert sched.fsrs_available() is False
-    # genuinely usable again right after, in this same process
-    assert sched.fsrs_available() is True
+    # back to whatever this environment genuinely has, in this same process —
+    # `True` only where fsrs is installed. Asserting `True` outright made this
+    # test a hidden `fsrs` requirement on a soft dependency (it failed on every
+    # box without fsrs while the README promised the suite stays green).
+    assert sched.fsrs_available() is _HAS_FSRS
 
 
 # ── record_review(): the fixed-interval fallback (deterministic, no fsrs) ───
