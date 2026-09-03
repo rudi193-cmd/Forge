@@ -67,6 +67,13 @@ GH = HOME / "github"
 STORE = GH / "safe-app-store-public"
 NESTOR = GH / "Die-Namic-Systems/nestor"
 FORGE = GH / "forge-play/Forge"
+# The engine this demo walks. Imported from the checkout the demo lives in, not
+# from wherever `forge` happens to be installed — the demo is this repo's.
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+ROSALIND = "rosalind"          # her builder id in the playground
+PROJECT = "rally-dates"        # the bite's project id (a per-project Nestor hangs off it)
 WILLOW_HOME = Path(os.environ.get("WILLOW_HOME", GH / "willow-memory/.willow"))
 WILLOW_MCP = WILLOW_HOME / "venvs/willow-mcp/bin/willow-mcp"
 
@@ -74,6 +81,10 @@ ORIGIN = "fixture:first-bite"
 W = 78
 
 LOG: list[dict] = []
+# Machine-readable facts the beats establish (the entry's tiers, the scorecard) —
+# emitted beside the friction log under --json, so a test can read what the
+# demo actually did rather than what it said.
+FACTS: dict = {}
 
 # ── pacing ──────────────────────────────────────────────────────────────────
 # A wall of text is not a demo, it is a dump. The beats below are paced so the
@@ -233,26 +244,57 @@ def b1_the_ask() -> None:
         "prove it. She opens the app. Vishwakarma asks the only question the "
         "onboarding asks."))
     says("Vishwakarma", "What's the first bite?")
-    says("Rosalind", "i need summit to tell me which rally pics aint got a date on em")
-    shows("""
-        keywords found : pics · date
-        candidate majors:
-          pics  → image tool        (client_only, file_read)
-          date  → metadata tool     (client_only, file_read)
-        two candidates, no way to choose
-    """)
+    sentence = "i need summit to tell me which rally pics aint got a date on em"
+    says("Rosalind", sentence)
+
+    # The scan is the engine's, over forge/keywords.toml — the first artifact.
+    from forge import majors
+    hits = majors.scan(sentence)
+    by_major = majors.majors_for(hits)
+    lines = [f"keywords found : {' · '.join(dict.fromkeys(h.matched for h in hits)) or '(none)'}",
+             "candidate majors:"]
+    for m, hs in by_major.items():
+        caps = ", ".join(dict.fromkeys(c for h in hs for c in h.caps))
+        lines.append(f"  {hs[0].matched:<6}→ {m:<16}({caps})")
+    ask = majors.ambiguous_majors(hits)
+    lines.append(f"{len(ask)} candidates, no way to choose" if ask else
+                 (f"one major: {next(iter(by_major))}" if by_major else "no keyword matched"))
+    shows("\n".join(lines))
     says("The box", "Do you want to look at the pictures, or fix what's written on them?")
     note("""Ambiguity is a detectable condition with a scripted response: ask.
             It is not a reasoning problem, and no model was consulted.""")
 
-    table = FORGE / "forge" / "keywords.toml"
-    if not table.exists():
-        friction(1, "the keyword → major table does not exist",
-                 "a flat file somebody can read and argue with",
-                 f"no such file: {table.relative_to(GH)} — the mapping above is "
-                 "hand-written into this demo",
-                 "write the table; the-forge-shape §3 calls it the first artifact",
+    # The entry: Nestor first, or refuse. Rosalind answers the one question.
+    from forge import entry as forge_entry
+    from forge.checkpoint import ChoiceResult
+
+    class _Rosalind:
+        def confirm(self, prompt):
+            says("Rosalind", "same as before, yeah")
+            return True
+
+        def choose(self, decision):
+            says("Rosalind", "fix what's written on em. the pics are fine")
+            return ChoiceResult(chosen_label="metadata tool",
+                                rationale="the pictures are fine; it's the dates that are wrong")
+
+    try:
+        e = forge_entry.open_bite(sentence, project_id=PROJECT, builder_id=ROSALIND,
+                                  responder=_Rosalind(), root=Path(os.environ["FORGE_HOME"]) / "checkpoints")
+    except forge_entry.EntryError as err:
+        FACTS["entry"] = {"refused": str(err)}
+        friction(1, "the entry refused: Nestor is not installed",
+                 "the box asks its memory first, then asks her",
+                 str(err),
+                 "pip install nestor-meaning — the entry cannot start a build that never asked",
                  kind="missing")
+    else:
+        FACTS["entry"] = {"tiers": e.tiers, "major": e.major,
+                          "band": e.decision_outcome.band if e.decision_outcome else None}
+        shows("\n".join(f"{k:<7} {v}" for k, v in e.tiers.items()) + f"\nmajor   {e.major}")
+        note("""Every tier answered out loud. The one that could not (remote) said
+                so instead of pretending. The second time she says this, the
+                box confirms instead of asking — that is the whole point.""")
 
 
 def b2_look_in_the_box() -> None:
@@ -481,23 +523,57 @@ def b11_calibration() -> None:
     beat(11, "The calibration", (
         "The Forge is the only part of the box built to find out rather than to "
         "record. It stated a confidence before the bar ran. Now it learns."))
-    shows("""
-        predicted   this will clear the bar        0.62
-        observed    it did, after two more gates
-        recorded    forge/calibration_ledger.py
-    """)
-    led = FORGE / "forge" / "calibration_ledger.py"
-    callers = 0
-    if led.exists():
-        for p in (FORGE / "forge").glob("*.py"):
-            if p.name != "calibration_ledger.py" and "calibration_ledger" in p.read_text(errors="ignore"):
-                callers += 1
-    friction(11, "the calibration ledger has never been called",
-             "the box knows how often it is right",
-             f"calibration_ledger.py is 12 KB and has {callers} callers in forge/; "
-             "~/.forge does not exist because nothing has ever had a prediction to record",
-             "call it from the promotion path — a bar run is a prediction with "
-             "ground truth attached", kind="missing")
+    # A plan with one fork in it: where do the dates live? The proposer
+    # recommends sidecar json at 0.8. Rosalind decides. The ledger finds out.
+    from forge import build_loop, calibration_ledger, plan_shape
+    from forge.checkpoint import ChoiceResult
+
+    class _Rosalind:
+        def confirm(self, prompt):
+            return True
+
+        def choose(self, decision):
+            says("Rosalind", "put it in the picture. i lose files, i dont lose pictures")
+            return ChoiceResult(chosen_label="exif in place",
+                                rationale="a sidecar file gets lost; the picture does not")
+
+    root = Path(os.environ["FORGE_HOME"]) / "checkpoints"
+    plan = plan_shape.load(REPO / "demo" / "fixtures" / "fork_plan.json")
+    try:
+        res = build_loop.resolve(plan, builder_id=ROSALIND, responder=_Rosalind(), root=root)
+    except Exception as err:  # noqa: BLE001 — the demo reports, it does not crash
+        FACTS["calibration"] = {"refused": f"{type(err).__name__}: {err}"}
+        friction(11, "the build loop could not run",
+                 "the box states a confidence, she answers, the box learns",
+                 f"{type(err).__name__}: {err}",
+                 "pip install nestor-meaning — the loop seals through memory", kind="missing")
+    else:
+        (pred,) = res.predictions
+        (outcome,) = res.outcomes
+        card = calibration_ledger.scorecard(ROSALIND, root=root)
+        FACTS["calibration"] = {"claim": pred["claim"], "confidence": pred["confidence"],
+                                "outcome": pred.get("outcome"), "resolved": card["resolved"],
+                                "hit_rate": card["summary"]["hit_rate"],
+                                "sealed": outcome.sealed, "band": outcome.band}
+        # Without Nestor the checkpoint still asks (full Socratic) but cannot
+        # seal; the ledger is a SOIL store and learns either way. Say which.
+        sealed = ("sealed in her memory" if outcome.sealed
+                  else "decided, NOT sealed — no memory to seal into (Nestor absent)")
+        shows(f"""
+            predicted   {pred['claim']:<40} {pred['confidence']:.2f}
+            observed    she picked {res.chosen['where-the-dates-live']} — {sealed}
+            resolved    {'hit' if pred.get('outcome') else 'miss'} — recorded in forge/calibration_ledger.py
+            scorecard   {card['resolved']} resolved, hit rate {card['summary']['hit_rate']:.2f}
+        """)
+        if not outcome.sealed:
+            friction(11, "the decision was made but not sealed",
+                     "her answer is remembered, so she is not asked again next time",
+                     "Nestor is not installed; run_checkpoint ran full Socratic on its soft path "
+                     "and returned sealed=False. The calibration still learned.",
+                     "pip install nestor-meaning", kind="missing")
+        note("""Ground truth arrived on its own: her pick is the outcome, and no
+                opinion entered. The box promised sidecar at 0.80 and was wrong.
+                Enough of those and it routes itself a review.""")
 
 
 # ── report ──────────────────────────────────────────────────────────────────
@@ -506,8 +582,8 @@ def report(as_json: bool) -> int:
     missing = [x for x in LOG if x["kind"] == "missing"]
     rough = [x for x in LOG if x["kind"] == "friction"]
     if as_json:
-        print(json.dumps({"origin": ORIGIN, "missing": missing, "friction": rough},
-                         indent=2))
+        print(json.dumps({"origin": ORIGIN, "missing": missing, "friction": rough,
+                          "facts": FACTS}, indent=2, default=str))
         return 0
     pause("beat")
     _emit()
@@ -567,6 +643,10 @@ def main() -> int:
 
     tmp = Path(args.keep) if args.keep else Path(tempfile.mkdtemp(prefix="first-bite-"))
     tmp.mkdir(parents=True, exist_ok=True)
+    # The engine's home lives inside the playground: the entry's project store,
+    # the checkpoint memory, the calibration ledger — all under tmp, all removed
+    # on exit. Nothing this demo seals leaks into a real ~/.forge.
+    os.environ["FORGE_HOME"] = str(tmp / "forge-home")
     try:
         shed = lay_the_table(tmp)
         b1_the_ask()
